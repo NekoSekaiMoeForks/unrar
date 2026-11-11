@@ -50,22 +50,30 @@ bool CreateReparsePoint(CommandData *Cmd,const wchar *Name,FileHeader *hd)
   std::vector<byte> Buf(BufSize);
   REPARSE_DATA_BUFFER *rdb=(REPARSE_DATA_BUFFER *)Buf.data();
 
-  // Remove \??\ NTFS junction prefix of present.
-  bool WinPrefix=SubstName.rfind(L"\\??\\",0)!=std::wstring::npos;
+  // Remove \??\ NTFS junction prefix if present.
+  bool WinPrefix=starts_with(SubstName,L"\\??\\");
   std::wstring PrintName=WinPrefix ? SubstName.substr(4):SubstName;
 
-  if (WinPrefix && PrintName.rfind(L"UNC\\",0)!=std::wstring::npos)
+  if (WinPrefix && starts_with(PrintName,L"UNC\\"))
     PrintName=L"\\"+PrintName.substr(3); // Convert UNC\server\share to \\server\share.
 
   size_t PrintLength=PrintName.size();
 
   bool AbsPath=WinPrefix;
-  // IsFullPath is not really needed here, AbsPath check is enough.
+  // IsFullPath is not really needed here for symlinks, AbsPath check is enough.
   // We added it just for extra safety, in case some Windows version would
   // allow to create absolute targets with SYMLINK_FLAG_RELATIVE.
+  // Junction points are either catched by \??\ or fail to follow the target
+  // once created, if \??\ was manually stripped from path.
   // Use hd->FileName instead of Name, since Name can include the destination
   // path as a prefix, which can confuse IsRelativeSymlinkSafe algorithm.
+  // 2026.08.19: We added FSREDIR_JUNCTION check, because normally junctions
+  // are always absolute, even if they pretent to not be. But this check is
+  // excessive and we keep it just in case here. If junction is absolute,
+  // it will be catched by other checks below. If junction isn't absolute,
+  // it will not follow the target path once created.
   if (!Cmd->AbsoluteLinks && (AbsPath || IsFullPath(hd->RedirName) ||
+      hd->RedirType==FSREDIR_JUNCTION ||
       !IsRelativeSymlinkSafe(Cmd,hd->FileName,Name,hd->RedirName)))
   {
     uiMsg(UIERROR_SKIPUNSAFELINK,hd->FileName,hd->RedirName);

@@ -74,6 +74,17 @@ void RawRead::Read(byte *SrcData,size_t Size)
 }
 
 
+// Move unread data to beginning of buffer and adjust buffer size.
+void RawRead::Compact()
+{
+  if (ReadPos<DataSize) // We would access beyond the vector end otherwise.
+    memmove(&Data[0],&Data[ReadPos],DataSize-ReadPos);
+  DataSize-=ReadPos;
+  ReadPos=0;
+  Data.resize(DataSize);
+}
+
+
 byte RawRead::Get1()
 {
   return ReadPos<DataSize ? Data[ReadPos++]:0;
@@ -180,11 +191,11 @@ uint RawRead::GetCRC50() // RAR 5.0 block CRC.
 
 
 // Read vint from arbitrary byte array.
-uint64 RawGetV(const byte *Data,uint &ReadPos,uint DataSize,bool &Overflow)
+uint64 RawGetV(const byte *Data,uint &ReadPos,uint EndPos,bool &Overflow)
 {
   Overflow=false;
   uint64 Result=0;
-  for (uint Shift=0;ReadPos<DataSize;Shift+=7)
+  for (uint Shift=0;ReadPos<EndPos;Shift+=7)
   {
     byte CurByte=Data[ReadPos++];
     Result+=uint64(CurByte & 0x7f)<<Shift;

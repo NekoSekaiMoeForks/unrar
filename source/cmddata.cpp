@@ -11,7 +11,11 @@ CommandData::CommandData()
 
 void CommandData::Init()
 {
-  RAROptions::Init();
+  // "*this={}" in RAROptions constructor causes the constructor to call itself
+  // infinitely, so we do it in the derived class instead.
+  *(RAROptions*)this={}; // Initialize all fields to default values.
+
+  RAROptions::Init(); // Set all non-default values.
 
   Command.clear();
   ArcName.clear();
@@ -69,9 +73,9 @@ void CommandData::ParseCommandLine(bool Preprocess,int argc, char *argv[])
       break;
     if (!FirstParam) // First parameter is the executable name.
       if (Preprocess)
-        PreprocessArg(Param.data());
+        PreprocessArg(Param.c_str());
       else
-        ParseArg(Param.data());
+        ParseArg(Param.c_str());
   }
 #else
   for (int I=1;I<argc;I++)
@@ -79,9 +83,9 @@ void CommandData::ParseCommandLine(bool Preprocess,int argc, char *argv[])
     std::wstring Arg;
     CharToWide(argv[I],Arg);
     if (Preprocess)
-      PreprocessArg(Arg.data());
+      PreprocessArg(Arg.c_str());
     else
-      ParseArg(Arg.data());
+      ParseArg(Arg.c_str());
   }
 #endif
   if (!Preprocess)
@@ -404,9 +408,16 @@ void CommandData::ProcessSwitch(const wchar *Switch)
           case 'H':
             OpenShared=true;
             break;
-          case 'F':
-            DeleteFiles=true;
+          case 'A':
+            DeleteArchive=true;
             break;
+
+#ifdef _WIN_ALL // Need it in UnRAR too for -da switch.
+          case 'R':
+            DeleteToRecycleBin=true;
+            break;
+#endif
+
           default:
             BadSwitch(Switch);
             break;
@@ -442,11 +453,11 @@ void CommandData::ProcessSwitch(const wchar *Switch)
         default:
           if (Switch[1]=='+')
           {
-            InclFileAttr|=GetExclAttr(Switch+2,InclDir);
+            InclFileAttr|=GetExclAttr(Switch+2,false,DirMode);
             InclAttrSet=true;
           }
           else
-            ExclFileAttr|=GetExclAttr(Switch+1,ExclDir);
+            ExclFileAttr|=GetExclAttr(Switch+1,true,DirMode);
           break;
       }
       break;
@@ -463,6 +474,8 @@ void CommandData::ProcessSwitch(const wchar *Switch)
           EncryptHeaders=true;
           if (Switch[2]!=0)
           {
+            // We use this code for other archive formats too, so MAXPASSWORD
+            // instead of MAXPASSWORD_RAR.
             if (wcslen(Switch+2)>=MAXPASSWORD)
               uiMsg(UIERROR_TRUNCPSW,MAXPASSWORD-1);
             Password.Set(Switch+2);
@@ -651,7 +664,7 @@ void CommandData::ProcessSwitch(const wchar *Switch)
             // 2023.07.22: For 4 GB and less we also check that it is power of 2,
             // so archives are compatible with RAR 5.0+.
             // We allow Size>PACK_MAX_DICT here, so we can use -md[x] to unpack
-            // archives created by future versions with higher PACK_MAX_DICTþ
+            // archives created by future versions with higher PACK_MAX_DICT.
             uint Flags;
             if ((Size=Archive::GetWinSize(Size,Flags))==0 ||
                 Size<=0x100000000ULL && !IsPow2(Size))
@@ -867,7 +880,53 @@ void CommandData::ProcessSwitch(const wchar *Switch)
         switch(toupperw(Switch[1]))
         {
           case 0:
+          case '+':
+          case '=':
             Solid|=SOLID_NORMAL;
+            if (Switch[1]=='=')
+            {
+              uint Par=0;
+              for (const wchar *S=Switch+2;*S!=0;S++)
+              {
+                if (IsDigit(*S))
+                  Par=Par*10+*S-'0';
+                switch(toupperw(*S))
+                {
+                  case '-':
+                    Solid=SOLID_NONE;
+                    break;
+                  case 'D':
+                    Solid|=SOLID_VOLUME_DEPENDENT;
+                    break;
+                  case 'E':
+                    Solid|=SOLID_FILEEXT;
+                    break;
+                  case 'F':
+                    Solid|=SOLID_COUNT;
+                    SolidCount=Par;
+                    break;
+                  case 'K':
+                    Solid|=SOLID_BLOCK_SIZE;
+                    SolidBlockSize=Par*1024LL;
+                    break;
+                  case 'M':
+                    Solid|=SOLID_BLOCK_SIZE;
+                    SolidBlockSize=Par*1024LL*1024LL;
+                    break;
+                  case 'G':
+                    Solid|=SOLID_BLOCK_SIZE;
+                    SolidBlockSize=Par*1024LL*1024LL*1024LL;
+                    break;
+                  case 'R':
+                    Solid=SOLID_RESET;
+                    break;
+                  case 'V':
+                    Solid|=SOLID_VOLUME_INDEPENDENT;
+                    break;
+                }
+
+              }
+            }
             break;
           case '-':
             Solid=SOLID_NONE;
@@ -883,15 +942,20 @@ void CommandData::ProcessSwitch(const wchar *Switch)
             break;
           case 'I':
             ProhibitConsoleInput();
+            // We do not assign the archive name automatically for -si
+            // if archive name is omitted and require the archive name to
+            // present always. Otherwise for"type arc.rar|rar x -si arc2.rar"
+            // if arc2.rar is a dummy archive name or file inside of arc.rar,
+            // which needs to be extracted.
             UseStdin=Switch[2] ? Switch+2:L"stdin";
             break;
           case 'L':
             if (IsDigit(Switch[2]))
-              FileSizeLess=GetVolSize(Switch+2,1);
+              FileSizeLess=GetModSize(Switch+2,1);
             break;
           case 'M':
             if (IsDigit(Switch[2]))
-              FileSizeMore=GetVolSize(Switch+2,1);
+              FileSizeMore=GetModSize(Switch+2,1);
             break;
           case 'C':
             {
@@ -943,18 +1007,15 @@ void CommandData::ProcessSwitch(const wchar *Switch)
               SetConsoleRedirectCharset(RedirectCharset);
             }
             break;
-
+          default:
+            // 2026.03.11: User tried non-existent -s+
+            BadSwitch(Switch);
+            break;
         }
       break;
     case 'T':
       switch(toupperw(Switch[1]))
       {
-        case 'K':
-          ArcTime=ARCTIME_KEEP;
-          break;
-        case 'L':
-          ArcTime=ARCTIME_LATEST;
-          break;
         case 'O':
           SetTimeFilters(Switch+2,true,true);
           break;
@@ -1158,7 +1219,7 @@ bool CommandData::IsSwitch(int Ch)
 
 
 #ifndef SFX_MODULE
-uint CommandData::GetExclAttr(const wchar *Str,bool &Dir)
+uint CommandData::GetExclAttr(const wchar *Str,bool Exclude,DIR_FILTER_MODE &DirMode)
 {
   if (IsDigit(*Str))
     return wcstol(Str,NULL,0);
@@ -1169,7 +1230,10 @@ uint CommandData::GetExclAttr(const wchar *Str,bool &Dir)
     switch(toupperw(*Str))
     {
       case 'D':
-        Dir=true;
+        if (Exclude)
+          DirMode=Str[1]=='1' ? DIRFM_EXCLUDE_EMPTY:DIRFM_EXCLUDE_ALL;
+        else
+          DirMode=DIRFM_DIR_ONLY;
         break;
 #ifdef _UNIX
       case 'V':
@@ -1230,7 +1294,8 @@ void CommandData::ReportWrongSwitches(RARFORMAT Format)
 #endif
 
 
-int64 CommandData::GetVolSize(const wchar *S,uint DefMultiplier)
+// Get size for string with optional trailing modifiers like "100m".
+int64 CommandData::GetModSize(const wchar *S,uint DefMultiplier)
 {
   int64 Size=0,FloatingDivider=0;
   for (uint I=0;S[I]!=0;I++)
@@ -1247,7 +1312,7 @@ int64 CommandData::GetVolSize(const wchar *S,uint DefMultiplier)
   {
     const wchar *ModList=L"bBkKmMgGtT";
     const wchar *Mod=wcschr(ModList,S[wcslen(S)-1]);
-    if (Mod==NULL)
+    if (Mod==nullptr)
       Size*=DefMultiplier;
     else
       for (ptrdiff_t I=2;I<=Mod-ModList;I+=2)

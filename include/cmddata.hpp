@@ -19,12 +19,12 @@ class CommandData:public RAROptions
   private:
     void ProcessSwitch(const wchar *Switch);
     void BadSwitch(const wchar *Switch);
-    uint GetExclAttr(const wchar *Str,bool &Dir);
+    uint GetExclAttr(const wchar *Str,bool Exclude,DIR_FILTER_MODE &DirMode);
 #if !defined(SFX_MODULE)
     void SetTimeFilters(const wchar *Mod,bool Before,bool Age);
     void SetStoreTimeMode(const wchar *S);
 #endif
-    int64 GetVolSize(const wchar *S,uint DefMultiplier);
+    int64 GetModSize(const wchar *S,uint DefMultiplier);
 
     bool FileLists;
     bool NoMoreSwitches;

@@ -508,6 +508,19 @@ bool DelDir(const std::wstring &Name)
 
 
 #if defined(_WIN_ALL) && !defined(SFX_MODULE)
+bool RecycleFile(std::wstring &Name)
+{
+  Name.push_back(L'\0'); // SHFileOperation expects the name to end with \0\0.
+  SHFILEOPSTRUCT fop{};
+  fop.wFunc=FO_DELETE;
+  fop.fFlags=FOF_NOCONFIRMATION|FOF_SILENT|FOF_ALLOWUNDO;
+  fop.pFrom=Name.c_str();
+  return SHFileOperation(&fop)==0;
+}
+#endif
+
+
+#if defined(_WIN_ALL) && !defined(SFX_MODULE)
 bool SetFileCompression(const std::wstring &Name,bool State)
 {
   HANDLE hFile=CreateFile(Name.c_str(),FILE_READ_DATA|FILE_WRITE_DATA,
@@ -587,7 +600,7 @@ bool LinksToDirs(const std::wstring &SrcName,const std::wstring &SkipPart,std::w
 
   size_t SkipLength=SkipPart.size();
 
-  if (SkipLength>0 && Path.rfind(SkipPart,0)!=0)
+  if (SkipLength>0 && !starts_with(Path,SkipPart))
     SkipLength=0; // Parameter validation, not really needed now.
 
   // Do not check parts already checked in previous path to improve performance.

@@ -52,7 +52,7 @@ void ExtractStreams20(Archive &Arc,const std::wstring &FileName)
   std::wstring StreamName;
   CharToWide(Arc.StreamHead.StreamName,StreamName);
 
-  if (StreamName[0]!=':')
+  if (StreamName[0]!=':' || StreamName.find_first_of(L"\\/")!=std::wstring::npos)
   {
     uiMsg(UIERROR_STREAMBROKEN,Arc.FileName,FileName);
     ErrHandler.SetErrorCode(RARX_CRC);
@@ -125,20 +125,27 @@ void ExtractStreams20(Archive &Arc,const std::wstring &FileName)
 
 
 #ifdef _WIN_ALL
-void ExtractStreams(Archive &Arc,const std::wstring &FileName,bool TestMode)
+void ExtractStreams(CommandData *Cmd,Archive &Arc,const std::wstring &FileName)
 {
   std::wstring StreamName=GetStreamNameNTFS(Arc);
-  if (StreamName[0]!=':')
+
+  if (StreamName[0]!=':' || StreamName.find_first_of(L"\\/")!=std::wstring::npos)
   {
     uiMsg(UIERROR_STREAMBROKEN,Arc.FileName,FileName);
     ErrHandler.SetErrorCode(RARX_CRC);
     return;
   }
 
-  if (TestMode)
+  if (Cmd->Test)
   {
+    if (!Cmd->DisableNames)
+      mprintf(St(MExtrTestFile),(FileName+StreamName).c_str());
     File CurFile;
-    Arc.ReadSubData(nullptr,&CurFile,true);
+    if (Arc.ReadSubData(nullptr,&CurFile,true) && !Cmd->DisableNames &&
+        !Cmd->DisablePercentage)
+    {
+      mprintf(L" %s",St(MOk));
+    }
     return;
   }
 
@@ -186,6 +193,10 @@ void ExtractStreams(Archive &Arc,const std::wstring &FileName,bool TestMode)
 
   if (CurFile.WCreate(FullName))
   {
+    CurFile.SetAllowDelete(!Cmd->KeepBroken);
+
+    if (!Cmd->DisableNames)
+      mprintf(St(MExtrFile),FullName.c_str());
 #ifdef PROPAGATE_MOTW
     if (!ParsedMotw.empty())
     {
@@ -197,10 +208,15 @@ void ExtractStreams(Archive &Arc,const std::wstring &FileName,bool TestMode)
     else
 #endif
     if (Arc.ReadSubData(nullptr,&CurFile,false))
+    {
       CurFile.Close();
+      if (!Cmd->DisableNames && !Cmd->DisablePercentage)
+        mprintf(L" %s",St(MOk));
+    }
   }
 
-  // Restoring original file timestamps.
+  // Restoring original file timestamps. Note that NTFS ADS share file
+  // attributes and times with the main file.
   File HostFile;
   if (HostFound && HostFile.Open(FileName,FMF_OPENSHARED|FMF_UPDATE))
     SetFileTime(HostFile.GetHandle(),&FD.ftCreationTime,&FD.ftLastAccessTime,

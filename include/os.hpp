@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <stdexcept> // For std::length_error.
 #include <memory> // For automatic pointers.
 #include <algorithm>
 
@@ -37,8 +38,6 @@
 #define _UNICODE // Set _T() macro to convert from narrow to wide strings.
 #endif
 
-#define WINVER _WIN32_WINNT_WINXP
-#define _WIN32_WINNT _WIN32_WINNT_WINXP
 
 #if !defined(ZIPSFX)
 #define RAR_SMP
@@ -52,6 +51,8 @@
 #pragma comment(lib, "Shlwapi.lib")
 #include <PowrProf.h>
 #pragma comment(lib, "PowrProf.lib")
+#include <psapi.h>
+#pragma comment(lib, "Psapi.lib") // For GetProcessMemoryInfo().
 #include <shellapi.h>
 #include <shlobj.h>
 #include <winioctl.h>
@@ -137,6 +138,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stddef.h> // Needed for ptrdiff_t in some UnRAR source builds.
 #include <string.h>
 #include <ctype.h>
 #include <fcntl.h>

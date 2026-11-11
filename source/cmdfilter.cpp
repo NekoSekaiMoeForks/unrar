@@ -20,6 +20,12 @@ bool CommandData::CheckArgs(StringList *Args,bool Dir,const std::wstring &CheckN
   Args->Rewind();
   while (Args->GetString(CurMask))
   {
+#ifdef _WIN_ALL
+    // 2025.09.11: Unix allows DOS slashes as a part of file name, so we do not
+    // convert it for Unix. In Windows we wish -xdir\file and -xdir/file both
+    // to exclude the file.
+    UnixSlashToDos(CurMask,CurMask);
+#endif    
     wchar LastMaskChar=GetLastChar(CurMask);
     bool DirMask=IsPathDiv(LastMaskChar); // Mask for directories only.
 
@@ -302,10 +308,11 @@ int CommandData::IsProcessFile(FileHeader &FileHead,bool *ExactMatch,int MatchTy
 #ifndef SFX_MODULE
   if (TimeCheck(FileHead.mtime,FileHead.ctime,FileHead.atime))
     return 0;
-  if ((FileHead.FileAttr & ExclFileAttr)!=0 || FileHead.Dir && ExclDir)
+  if ((FileHead.FileAttr & ExclFileAttr)!=0 ||
+      FileHead.Dir && DirMode==DIRFM_EXCLUDE_ALL)
     return 0;
   if (InclAttrSet && (FileHead.FileAttr & InclFileAttr)==0 &&
-      (!FileHead.Dir || !InclDir))
+      (!FileHead.Dir || DirMode!=DIRFM_DIR_ONLY))
     return 0;
   if (!Dir && SizeCheck(FileHead.UnpSize))
     return 0;
