@@ -38,10 +38,10 @@ DATA		:=	data
 LIBS		:=	 
 
 MACHDEP		:= -DBIG_ENDIAN
-CFLAGS		+= -O2 -Wall -mcpu=cell $(MACHDEP) -fno-strict-aliasing $(INCLUDES)
-CXXFLAGS	+= -O2 -Wno-logical-op-parentheses -Wno-switch -Wno-dangling-else -mcpu=cell $(MACHDEP) -fno-strict-aliasing $(INCLUDES)
+CFLAGS		+= -O2 -I. -Wall -mcpu=cell $(MACHDEP) -fno-strict-aliasing $(INCLUDES)
+CXXFLAGS	+= -O2 -I. -Wno-logical-op-parentheses -Wno-switch -Wno-dangling-else -mcpu=cell $(MACHDEP) -fno-strict-aliasing $(INCLUDES)
 
-CXXFLAGS	+= -DBIG_ENDIAN -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DRARDLL
+CXXFLAGS	+= -DBIG_ENDIAN -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DRARDLL -I.
 
 LD			:=	ppu-ld
 
